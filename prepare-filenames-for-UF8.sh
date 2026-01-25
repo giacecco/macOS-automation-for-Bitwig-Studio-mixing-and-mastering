@@ -1,10 +1,10 @@
-#!/bin/zsh
+#!/usr/bin/env bash
 
 # Silent file renamer for macOS/Automator
 # Usage: ./rename.sh /path/to/folder
 # Debug mode: VERBOSE=1 ./rename.sh /path/to/folder
 # Version: ./rename.sh --version
-VERSION="2025-01-25-v3-consonant-priority"
+VERSION="2025-01-25-v4-word-balanced"
 
 # Show version if requested
 if [[ "$1" == "--version" || "$1" == "-v" ]]; then
@@ -12,10 +12,6 @@ if [[ "$1" == "--version" || "$1" == "-v" ]]; then
     echo "Features: 6-char abbreviation, consonant priority, original name in parentheses"
     exit 0
 fi
-
-# Disable all tracing and warnings
-setopt no_xtrace 2>/dev/null
-setopt no_warn_create_global 2>/dev/null
 
 # Validate input
 [[ $# -ne 1 ]] && { echo "Error: Exactly one folder argument required" >&2; exit 1; }
@@ -40,6 +36,11 @@ generate_short_name() {
         if (word ~ /^[0-9]+$/) {
             return substr(word, 1, target_len)
         }
+        
+        # Clear arrays from previous calls
+        delete chars
+        delete is_v
+        delete include
         
         # Build character array with vowel flags
         len = length(word)
@@ -145,63 +146,33 @@ generate_short_name() {
         
         result = ""
         
-        # Build character pool from all words
-        # Format: char_pool[index] = {char, word_idx, char_idx, is_first, is_vowel}
-        pool_size = 0
+        # Strategy: Distribute chars to maximize average word completion
+        # Within each word, prioritize consonants then vowels
         
-        for (w = 1; w <= num_words; w++) {
-            word = words[w]
-            word_len = length(word)
-            
-            for (c = 1; c <= word_len; c++) {
-                pool_size++
-                char = substr(word, c, 1)
-                pool_char[pool_size] = char
-                pool_word_idx[pool_size] = w
-                pool_char_idx[pool_size] = c
-                pool_is_first[pool_size] = (c == 1)
-                pool_is_vowel[pool_size] = is_vowel(char)
-                pool_is_digit[pool_size] = (char ~ /[0-9]/)
-            }
+        # Calculate how many chars each word gets
+        for (i = 1; i <= num_words; i++) {
+            word_lens[i] = 1  # Start with first letter of each word
         }
         
-        # Mark characters for inclusion
-        included = 0
+        remaining = avail - num_words
         
-        # Pass 1: Include first char of each word
-        for (i = 1; i <= pool_size && included < avail; i++) {
-            if (pool_is_first[i]) {
-                pool_include[i] = 1
-                included++
-            }
-        }
-        
-        # Pass 2: Include remaining consonants (not first chars)
-        for (i = 1; i <= pool_size && included < avail; i++) {
-            if (!pool_include[i] && !pool_is_vowel[i] && !pool_is_first[i]) {
-                pool_include[i] = 1
-                included++
-            }
-        }
-        
-        # Pass 3: Include vowels (not first chars)
-        for (i = 1; i <= pool_size && included < avail; i++) {
-            if (!pool_include[i] && pool_is_vowel[i] && !pool_is_first[i]) {
-                pool_include[i] = 1
-                included++
-            }
-        }
-        
-        # Build result from included characters
-        for (i = 1; i <= pool_size; i++) {
-            if (pool_include[i]) {
-                char = pool_char[i]
-                if (pool_is_first[i]) {
-                    result = result toupper(char)
-                } else {
-                    result = result tolower(char)
+        # Distribute remaining chars round-robin
+        while (remaining > 0) {
+            distributed = 0
+            for (i = 1; i <= num_words && remaining > 0; i++) {
+                if (word_lens[i] < length(words[i])) {
+                    word_lens[i]++
+                    remaining--
+                    distributed = 1
                 }
             }
+            # If we could not distribute any more, break
+            if (!distributed) break
+        }
+        
+        # Now build each word using consonant-first within that word
+        for (w = 1; w <= num_words; w++) {
+            result = result abbreviate_word(words[w], word_lens[w])
         }
         
         # Add trailing number
@@ -222,8 +193,8 @@ done < <(find "$1" -type f -print0)
 
 # Process each file
 for filepath in "${files[@]}"; do
-    dir="${filepath:h}"
-    base="${filepath:t}"
+    dir=$(dirname "$filepath")
+    base=$(basename "$filepath")
     
     [[ -n "$VERBOSE" ]] && printf "Checking: %s\n" "$base" >&2
     
@@ -234,11 +205,11 @@ for filepath in "${files[@]}"; do
     fi
     
     # Extract extension and name
-    local ext=""
-    local nameonly=""
+    ext=""
+    nameonly=""
     if [[ "$base" == *.* ]]; then
-        ext="${base:e}"
-        nameonly="${base:r}"
+        ext="${base##*.}"
+        nameonly="${base%.*}"
     else
         nameonly="$base"
     fi
