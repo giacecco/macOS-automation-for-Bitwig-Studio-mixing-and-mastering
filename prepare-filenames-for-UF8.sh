@@ -4,7 +4,7 @@
 # Usage: ./rename.sh /path/to/folder
 # Debug mode: VERBOSE=1 ./rename.sh /path/to/folder
 # Version: ./rename.sh --version
-VERSION="2025-01-25-v6-preserve-allcaps"
+VERSION="2025-01-25-v7-remove-apostrophes"
 
 # Show version if requested
 if [[ "$1" == "--version" || "$1" == "-v" ]]; then
@@ -116,6 +116,9 @@ generate_short_name() {
             trailing = substr(name, RSTART, RLENGTH)
             name = substr(name, 1, RSTART-1)
         }
+        
+        # Remove apostrophes before processing
+        gsub(/'\''/, "", name)
         
         # Remove non-alphanumeric but keep internal numbers as separate words
         gsub(/[^a-zA-Z0-9]+/, " ", name)

@@ -10,7 +10,7 @@ The script recursively processes all files in a folder and renames them using a 
 - `60 Bridge Fred Durst.wav` → `BrFrDu (60 Bridge Fred Durst).wav`
 - `32 Verse2 Salesman.wav` → `Ve2Sal (32 Verse2 Salesman).wav`
 - `17 Bass.wav` → `Bass__ (17 Bass).wav`
-- `71 BD Can't Stop Ctr.wav` → `BDCnSt (71 BD Can't Stop Ctr).wav` *(BD preserved as all-caps abbreviation)*
+- `71 BD Can't Stop Ctr.wav` → `BDCntS (71 BD Can't Stop Ctr).wav` *(apostrophe removed, BD preserved as all-caps)*
 - `05 Shotgun.wav` → `Shtgun (05 Shotgun).wav`
 - `34 Guitar Left 3.wav` → `GtrLf3 (34 Guitar Left 3).wav`
 - `45 Chorus DT L.wav` → `ChrDTL (45 Chorus DT L).wav` *(DT and L preserved as abbreviations)*
@@ -22,18 +22,26 @@ Leading numbers (often added by some DAW when exporting but not necessarily usef
 - `60 Bridge Fred Durst` → processes as `Bridge Fred Durst`
 - Final result: `BrFrDu (60 Bridge Fred Durst).wav`
 
-### 2. Trailing Numbers Preservation
+### 2. Apostrophe Removal
+Apostrophes are removed from filenames before processing to avoid fragmentation:
+- `Can't` → `Cant`
+- `I'm` → `Im`
+- `Don't` → `Dont`
+
+This prevents words like "Can't" from being split into "Can" and "t", ensuring all characters are used for meaningful words.
+
+### 3. Trailing Numbers Preservation
 Numbers at the end of the filename are kept as part of the abbreviation, as they are particularly useful in representing variants or takes:
 - `Guitar2` → `Guitr2` (keeps the 2)
 - `Explosion1` → `Expls1` (keeps the 1)
 - Trailing numbers reduce available characters: with trailing "2", only 5 chars remain for the abbreviation
 
-### 3. Internal Number Handling
+### 4. Internal Number Handling
 Numbers within words are treated as separate "words":
 - `Verse2 Salesman` → words: `Verse`, `2`, `Salesman`
 - `PC3 YEAH2` → words: `Pc`, `3`, `YEAH`, `2`
 
-### 4. All-Caps Abbreviation Preservation
+### 5. All-Caps Abbreviation Preservation
 Words that are entirely in uppercase are recognized as existing abbreviations and preserved with priority:
 - `DT` (distortion), `L` (left), `R` (right), `FX` (effects), `BD` (bass drum) are kept in full
 - These get their full character allocation before distributing to other words
@@ -46,7 +54,7 @@ Words that are entirely in uppercase are recognized as existing abbreviations an
 
 This ensures that meaningful audio engineering abbreviations like L/R (stereo), FX (effects), BD (bass drum), etc. are always readable.
 
-### 5. Word Abbreviation Algorithm
+### 6. Word Abbreviation Algorithm
 The script creates a 6-character abbreviation using a **round-robin character distribution** strategy:
 
 **Step 1: Calculate Available Characters**
@@ -123,17 +131,17 @@ For each word, given its allocated character count:
   - `FX` preserved → `FX`
   - Result: `BDFXWt` (or reordered based on original: `WtBDFX` if Wet came first)
 
-### 6. Padding
+### 7. Padding
 If the generated name is shorter than 6 characters, it's padded with underscores:
 - `Bass` → `Bass__`
 - `Ding` → `Ding__`
 
-### 7. Original Name Preservation
+### 8. Original Name Preservation
 The full original name (including leading numbers) is added in parentheses:
 - Final format: `SHORT_ (Original Name).ext`
 - Example: `BrFrDu (60 Bridge Fred Durst).wav`
 
-### 8. Collision Handling
+### 9. Collision Handling
 If two files would create the same shortened name, a counter is added:
 - `ChGtrL (21 Chorus Gtr L).wav`
 - `ChGtrL_2 (23 Chunky Gtr L).wav`
@@ -218,10 +226,11 @@ Example: `Shotgun` (7 chars) → 6 chars needed
 - Padding with underscores ensures consistent filename lengths for better sorting and display alignment
 
 ## Version
-Current version: `2025-01-25-v6-preserve-allcaps`
+Current version: `2025-01-25-v7-remove-apostrophes`
 
 Features in this version:
 - 6-character abbreviation
+- Apostrophe removal to prevent word fragmentation
 - All-caps word preservation (words like DT, L, R, FX, BD are kept intact)
 - Consonant priority within words
 - Round-robin character distribution across words
