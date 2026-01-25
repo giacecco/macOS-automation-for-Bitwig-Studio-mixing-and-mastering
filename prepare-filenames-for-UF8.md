@@ -4,15 +4,16 @@
 A bash script for macOS, suitable to be run as a "quick action" in Finder, that intelligently shortens filenames while preserving the original name in parentheses. Designed for audio producers and anyone working with long, descriptive filenames that need to be condensed for better visualizing on the display of Mackie-like devices like the SSL UF8, that offers only 6 characters per track.
 
 ## What It Does
-The script recursively processes all files in a folder and renames them using a smart abbreviation algorithm, creating short 6-character names while keeping the full original name for reference, still visible in the DAW.
+The script recursively processes all files in a folder and renames them using a smart abbreviation algorithm, creating short 6-character names while keeping the full original name for reference.
 
 ### Example Transformations
 - `60 Bridge Fred Durst.wav` → `BrFrDu (60 Bridge Fred Durst).wav`
 - `32 Verse2 Salesman.wav` → `Ve2Sal (32 Verse2 Salesman).wav`
 - `17 Bass.wav` → `Bass__ (17 Bass).wav`
-- `71 BD Can't Stop Ctr.wav` → `BCTSCt (71 BD Can't Stop Ctr).wav`
+- `71 BD Can't Stop Ctr.wav` → `BDCnSt (71 BD Can't Stop Ctr).wav` *(BD preserved as all-caps abbreviation)*
 - `05 Shotgun.wav` → `Shtgun (05 Shotgun).wav`
 - `34 Guitar Left 3.wav` → `GtrLf3 (34 Guitar Left 3).wav`
+- `45 Chorus DT L.wav` → `ChrDTL (45 Chorus DT L).wav` *(DT and L preserved as abbreviations)*
 
 ## How It Works
 
@@ -32,7 +33,20 @@ Numbers within words are treated as separate "words":
 - `Verse2 Salesman` → words: `Verse`, `2`, `Salesman`
 - `PC3 YEAH2` → words: `Pc`, `3`, `YEAH`, `2`
 
-### 4. Word Abbreviation Algorithm
+### 4. All-Caps Abbreviation Preservation
+Words that are entirely in uppercase are recognized as existing abbreviations and preserved with priority:
+- `DT` (distortion), `L` (left), `R` (right), `FX` (effects), `BD` (bass drum) are kept in full
+- These get their full character allocation before distributing to other words
+- They remain in uppercase in the final abbreviation
+
+**Examples:**
+- `Chorus DT L` → `DT` and `L` are preserved → result: `ChrDTL`
+- `BD Scream Monster` → `BD` gets 2 chars, others share remaining → `BDScrM`
+- `Guitar FX Wet` → `FX` gets 2 chars → `GtrFXW`
+
+This ensures that meaningful audio engineering abbreviations like L/R (stereo), FX (effects), BD (bass drum), etc. are always readable.
+
+### 5. Word Abbreviation Algorithm
 The script creates a 6-character abbreviation using a **round-robin character distribution** strategy:
 
 **Step 1: Calculate Available Characters**
@@ -40,10 +54,12 @@ The script creates a 6-character abbreviation using a **round-robin character di
 - Subtract trailing number length (if any)
 - Example: `Guitar2` has trailing "2", so 5 chars available for abbreviation
 
-**Step 2: Distribute Characters Round-Robin**
-1. Give each word 1 character (its first letter, capitalized)
-2. Distribute remaining characters evenly across words, cycling through them
-3. This maximizes the average number of letters preserved from each word
+**Step 2: Distribute Characters with All-Caps Priority**
+1. First, allocate full length to any all-caps words (existing abbreviations)
+2. Calculate remaining available characters
+3. Give each non-abbreviated word 1 character (its first letter, capitalized)
+4. Distribute remaining characters evenly across non-abbreviated words, cycling through them
+5. This maximizes the average number of letters preserved from each word while keeping important abbreviations intact
 
 **Step 3: Abbreviate Each Word (Consonant-Priority)**
 For each word, given its allocated character count:
@@ -89,17 +105,35 @@ For each word, given its allocated character count:
   - `Left` gets 2 chars → `Lf` (L-f, drops vowels e)
   - Add trailing: `GtrLf3`
 
-### 5. Padding
+*Example 5: With All-Caps Abbreviations*
+- `Chorus DT L` (3 words, 6 chars available):
+  - Identify all-caps: `DT` (2 chars), `L` (1 char) = 3 chars reserved
+  - 3 chars remaining for `Chorus`
+  - `Chorus` gets 3 chars → `Chr` (C-h-r, drops vowels o,u,s)
+  - `DT` preserved → `DT`
+  - `L` preserved → `L`
+  - Result: `ChrDTL`
+
+*Example 6: Multiple All-Caps Words*
+- `BD FX Wet` (3 words, 6 chars available):
+  - Identify all-caps: `BD` (2 chars), `FX` (2 chars) = 4 chars reserved
+  - 2 chars remaining for `Wet`
+  - `Wet` gets 2 chars → `Wt` (W-t, drops vowel e)
+  - `BD` preserved → `BD`
+  - `FX` preserved → `FX`
+  - Result: `BDFXWt` (or reordered based on original: `WtBDFX` if Wet came first)
+
+### 6. Padding
 If the generated name is shorter than 6 characters, it's padded with underscores:
 - `Bass` → `Bass__`
 - `Ding` → `Ding__`
 
-### 6. Original Name Preservation
+### 7. Original Name Preservation
 The full original name (including leading numbers) is added in parentheses:
 - Final format: `SHORT_ (Original Name).ext`
 - Example: `BrFrDu (60 Bridge Fred Durst).wav`
 
-### 7. Collision Handling
+### 8. Collision Handling
 If two files would create the same shortened name, a counter is added:
 - `ChGtrL (21 Chorus Gtr L).wav`
 - `ChGtrL_2 (23 Chunky Gtr L).wav`
@@ -138,18 +172,22 @@ Now you can right-click any folder in Finder → Quick Actions → "Rename Files
 - ✅ Handles filename collisions automatically
 - ✅ Maintains original name for reference
 - ✅ Smart abbreviation that maximizes word representation
+- ✅ Preserves all-caps words as existing abbreviations (e.g., L, R, FX, DT, BD)
 - ✅ Consonant-priority within each word for better readability
 - ✅ Special handling for numbers in filenames
 - ✅ Round-robin character distribution across words
-- ✅ Cross-platform (bash-compatible for macOS and Linux)
+- ✅ Bash-compatible for macOS
 
 ## Requirements
-- bash (pre-installed on macOS and most Linux systems)
-- `awk` (pre-installed on macOS and most Linux systems)
-- `find` (pre-installed on macOS and most Linux systems)
-- `dirname` and `basename` utilities (standard on Unix-like systems)
+- bash (pre-installed on macOS)
+- `awk` (pre-installed on macOS)
+- `find` (pre-installed on macOS)
+- `dirname` and `basename` utilities (standard on macOS)
 
 ## Algorithm Details
+
+### Why Preserve All-Caps Words?
+In audio production, all-caps abbreviations like L/R (left/right channels), FX (effects), DT (distortion), BD (bass drum), etc. are industry-standard and already maximally compressed. The script recognizes words that are entirely uppercase (excluding numbers) as existing abbreviations and preserves them with priority. This ensures critical channel/track identifiers remain readable on limited displays.
 
 ### Why Round-Robin Distribution?
 The round-robin approach ensures that when abbreviating multi-word filenames, characters are distributed evenly across all words rather than favoring earlier words. This maximizes the average number of letters preserved from each word, making abbreviations more recognizable.
@@ -180,11 +218,12 @@ Example: `Shotgun` (7 chars) → 6 chars needed
 - Padding with underscores ensures consistent filename lengths for better sorting and display alignment
 
 ## Version
-Current version: `2025-01-25-v5-drop-vowels-left`
+Current version: `2025-01-25-v6-preserve-allcaps`
 
 Features in this version:
 - 6-character abbreviation
+- All-caps word preservation (words like DT, L, R, FX, BD are kept intact)
 - Consonant priority within words
 - Round-robin character distribution across words
 - Original name preservation in parentheses
-- Bash compatibility for cross-platform use
+- Bash compatibility for macOS

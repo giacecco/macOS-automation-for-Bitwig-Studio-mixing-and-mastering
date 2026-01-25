@@ -4,7 +4,7 @@
 # Usage: ./rename.sh /path/to/folder
 # Debug mode: VERBOSE=1 ./rename.sh /path/to/folder
 # Version: ./rename.sh --version
-VERSION="2025-01-25-v5-drop-vowels-left"
+VERSION="2025-01-25-v6-preserve-allcaps"
 
 # Show version if requested
 if [[ "$1" == "--version" || "$1" == "-v" ]]; then
@@ -34,6 +34,11 @@ generate_short_name() {
         
         # If word is purely numeric, just truncate it
         if (word ~ /^[0-9]+$/) {
+            return substr(word, 1, target_len)
+        }
+        
+        # If word is all uppercase (already an abbreviation), preserve it in uppercase
+        if (word ~ /^[A-Z]+$/) {
             return substr(word, 1, target_len)
         }
         
@@ -147,6 +152,17 @@ generate_short_name() {
             exit
         }
         
+        # Identify which words are all-caps (already abbreviations)
+        for (i = 1; i <= num_words; i++) {
+            word = words[i]
+            # Check if word is all uppercase letters (and not a number)
+            if (word ~ /^[A-Z]+$/ && word !~ /^[0-9]+$/) {
+                is_abbrev[i] = 1
+            } else {
+                is_abbrev[i] = 0
+            }
+        }
+        
         # Calculate available chars
         avail = max_chars
         if (length(trailing) > 0) {
@@ -156,28 +172,47 @@ generate_short_name() {
         
         result = ""
         
-        # Strategy: Distribute chars to maximize average word completion
-        # Within each word, prioritize consonants then vowels
+        # Strategy: Preserve all-caps abbreviations, distribute rest to other words
         
-        # Calculate how many chars each word gets
+        # First, allocate full length to all-caps words
         for (i = 1; i <= num_words; i++) {
-            word_lens[i] = 1  # Start with first letter of each word
+            if (is_abbrev[i]) {
+                word_lens[i] = length(words[i])
+                avail = avail - word_lens[i]
+            } else {
+                word_lens[i] = 0
+            }
         }
         
-        remaining = avail - num_words
+        # Count non-abbreviated words
+        non_abbrev_count = 0
+        for (i = 1; i <= num_words; i++) {
+            if (!is_abbrev[i]) non_abbrev_count++
+        }
         
-        # Distribute remaining chars round-robin
-        while (remaining > 0) {
-            distributed = 0
-            for (i = 1; i <= num_words && remaining > 0; i++) {
-                if (word_lens[i] < length(words[i])) {
-                    word_lens[i]++
-                    remaining--
-                    distributed = 1
+        # If we have space left and non-abbreviated words, distribute to them
+        if (avail > 0 && non_abbrev_count > 0) {
+            # Give each non-abbrev word at least 1 character
+            for (i = 1; i <= num_words; i++) {
+                if (!is_abbrev[i]) {
+                    word_lens[i] = 1
+                    avail--
                 }
             }
-            # If we could not distribute any more, break
-            if (!distributed) break
+            
+            # Distribute remaining chars round-robin to non-abbrev words
+            while (avail > 0) {
+                distributed = 0
+                for (i = 1; i <= num_words && avail > 0; i++) {
+                    if (!is_abbrev[i] && word_lens[i] < length(words[i])) {
+                        word_lens[i]++
+                        avail--
+                        distributed = 1
+                    }
+                }
+                # If we could not distribute any more, break
+                if (!distributed) break
+            }
         }
         
         # Now build each word using consonant-first within that word
