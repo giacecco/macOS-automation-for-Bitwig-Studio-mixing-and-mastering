@@ -4,7 +4,7 @@
 # Usage: ./rename.sh /path/to/folder
 # Debug mode: VERBOSE=1 ./rename.sh /path/to/folder
 # Version: ./rename.sh --version
-VERSION="2025-01-25-v4-word-balanced"
+VERSION="2025-01-25-v5-drop-vowels-left"
 
 # Show version if requested
 if [[ "$1" == "--version" || "$1" == "-v" ]]; then
@@ -49,28 +49,38 @@ generate_short_name() {
             is_v[i] = is_vowel(chars[i])
         }
         
-        # Mark which positions to include
-        # Always include first character
-        include[1] = 1
-        included_count = 1
-        
-        if (included_count >= target_len) {
-            return toupper(chars[1])
+        # If target length >= word length, just return the whole word
+        if (target_len >= len) {
+            result = toupper(substr(word, 1, 1)) tolower(substr(word, 2))
+            return result
         }
         
-        # First pass: mark consonants for inclusion
-        for (i = 2; i <= len && included_count < target_len; i++) {
-            if (!is_v[i]) {
-                include[i] = 1
-                included_count++
+        # We need to drop (len - target_len) characters
+        to_drop = len - target_len
+        
+        # Strategy: Drop vowels first from left to right (except first char)
+        # This keeps consonants at the beginning
+        
+        # Mark all for inclusion initially
+        for (i = 1; i <= len; i++) {
+            include[i] = 1
+        }
+        
+        dropped = 0
+        
+        # Pass 1: Drop vowels from left to right (except position 1)
+        for (i = 2; i <= len && dropped < to_drop; i++) {
+            if (is_v[i] && include[i]) {
+                include[i] = 0
+                dropped++
             }
         }
         
-        # Second pass: mark vowels for inclusion if we still have room
-        for (i = 2; i <= len && included_count < target_len; i++) {
-            if (is_v[i]) {
-                include[i] = 1
-                included_count++
+        # Pass 2: Drop consonants from end if needed (except position 1)
+        for (i = len; i >= 2 && dropped < to_drop; i--) {
+            if (!is_v[i] && include[i]) {
+                include[i] = 0
+                dropped++
             }
         }
         
