@@ -142,9 +142,27 @@ The full original name (including leading numbers) is added in parentheses:
 - Example: `BrFrDu (60 Bridge Fred Durst).wav`
 
 ### 9. Collision Handling
-If two files would create the same shortened name, a counter is added:
-- `ChGtrL (21 Chorus Gtr L).wav`
-- `ChGtrL_2 (23 Chunky Gtr L).wav`
+If two files would create the same shortened name, both files receive sequential counters to distinguish them:
+- The **first file** is renamed with counter "1"
+- The **second file** gets counter "2"
+- Additional files get counters 3, 4, etc.
+- Counters are added at the **end** of the 6-character name
+- The script **removes lowercase letters** to make room for counters, preserving capital letters (word boundaries)
+
+**Example:**
+- `20 Guitar Solo.wav` → `GtrSl1 (20 Guitar Solo).wav` (first file, gets "1")
+- `21 Guitar Song.wav` → `GtrSl2 (21 Guitar Song).wav` (second file, gets "2")
+
+Both files abbreviate to "GtrSol" initially, but when the collision is detected:
+- First file: removes "o" → `GtrSl` + `1` = `GtrSl1`
+- Second file: removes "o" → `GtrSl` + `2` = `GtrSl2`
+
+**Counter placement:**
+- Single digit (1-9): Removes last lowercase letter, adds counter at end
+- Double digit (10-99): Removes last 2 lowercase letters, adds counter at end
+- If no lowercase letters available, removes last character(s) instead
+
+This ensures both related files are clearly identified while maintaining the 6-character limit.
 
 ## Usage
 
@@ -177,7 +195,7 @@ Now you can right-click any folder in Finder → Quick Actions → "Rename Files
 - ✅ Processes all files recursively in a folder
 - ✅ Preserves file extensions
 - ✅ Skips hidden files (those starting with `.`)
-- ✅ Handles filename collisions automatically
+- ✅ Smart collision handling (both files get sequential counters while maintaining 6-char limit)
 - ✅ Maintains original name for reference
 - ✅ Smart abbreviation that maximizes word representation
 - ✅ Preserves all-caps words as existing abbreviations (e.g., L, R, FX, DT, BD)
@@ -226,7 +244,7 @@ Example: `Shotgun` (7 chars) → 6 chars needed
 - Padding with underscores ensures consistent filename lengths for better sorting and display alignment
 
 ## Version
-Current version: `2025-01-25-v7-remove-apostrophes`
+Current version: `2025-01-25-v9-both-files-get-counters`
 
 Features in this version:
 - 6-character abbreviation
@@ -235,4 +253,5 @@ Features in this version:
 - Consonant priority within words
 - Round-robin character distribution across words
 - Original name preservation in parentheses
+- Smart collision handling (both files get sequential counters)
 - Bash compatibility for macOS

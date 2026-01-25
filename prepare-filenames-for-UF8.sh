@@ -4,7 +4,7 @@
 # Usage: ./rename.sh /path/to/folder
 # Debug mode: VERBOSE=1 ./rename.sh /path/to/folder
 # Version: ./rename.sh --version
-VERSION="2025-01-25-v7-remove-apostrophes"
+VERSION="2025-01-25-v9-both-files-get-counters"
 
 # Show version if requested
 if [[ "$1" == "--version" || "$1" == "-v" ]]; then
@@ -287,16 +287,127 @@ for filepath in "${files[@]}"; do
         [[ -n "$VERBOSE" ]] && printf "  Will rename: %s -> %s\n" "$base" "$new_filename" >&2
         
         # Handle collisions
-        counter=2
-        while [[ -e "$new_path" && "$new_path" != "$filepath" ]]; do
-            if [[ -n "$ext" ]]; then
-                new_filename="${new_name}_${counter} (${nameonly}).${ext}"
+        if [[ -e "$new_path" && "$new_path" != "$filepath" ]]; then
+            # Collision detected! Rename the existing file to add counter "1"
+            original_collision_path="$new_path"
+            
+            # Calculate collision name with "1"
+            found_lower=""
+            for ((i=${#new_name}-1; i>=0; i--)); do
+                char="${new_name:$i:1}"
+                if [[ "$char" =~ [a-z] ]]; then
+                    first_collision_name="${new_name:0:$i}${new_name:$((i+1))}1"
+                    found_lower=1
+                    break
+                fi
+            done
+            if [[ -z "$found_lower" ]]; then
+                first_collision_name="${new_name:0:5}1"
+            fi
+            
+            # Get the original filename of the existing file
+            existing_base=$(basename "$original_collision_path")
+            if [[ "$existing_base" == *.* ]]; then
+                existing_ext="${existing_base##*.}"
+                existing_nameonly="${existing_base%.*}"
+                # Extract original name from parentheses using parameter expansion
+                # Format is: "ShortN (Original Name)"
+                if [[ "$existing_nameonly" == *"("*")"* ]]; then
+                    # Extract everything between ( and )
+                    temp="${existing_nameonly#*(}"
+                    existing_original="${temp%)*}"
+                    first_new_filename="${first_collision_name} (${existing_original}).${existing_ext}"
+                else
+                    first_new_filename="${first_collision_name}.${existing_ext}"
+                fi
             else
-                new_filename="${new_name}_${counter} (${nameonly})"
+                first_new_filename="${first_collision_name}"
+            fi
+            
+            # Rename the existing file to add "1"
+            first_new_path="${dir}/${first_new_filename}"
+            mv "$original_collision_path" "$first_new_path" 2>/dev/null
+            [[ -n "$VERBOSE" ]] && printf "  Renamed existing file to: %s\n" "$first_new_filename" >&2
+            
+            # Start counter at 2 for current file
+            counter=2
+        else
+            counter=2
+        fi
+        
+        # Check for additional collisions (counter 2, 3, 4, etc.)
+        while [[ -e "$new_path" && "$new_path" != "$filepath" ]]; do
+            # Keep exactly 6 chars with counter at the END
+            # Remove lowercase letter(s) to make room, preserving capitals (word boundaries)
+            
+            if [[ $counter -lt 10 ]]; then
+                # Single digit: remove 1 char (prefer lowercase) then append counter
+                # Find last lowercase letter to remove
+                found_lower=""
+                for ((i=${#new_name}-1; i>=0; i--)); do
+                    char="${new_name:$i:1}"
+                    if [[ "$char" =~ [a-z] ]]; then
+                        # Remove this lowercase and append counter at end
+                        collision_name="${new_name:0:$i}${new_name:$((i+1))}${counter}"
+                        found_lower=1
+                        break
+                    fi
+                done
+                # If no lowercase found, just replace last char
+                if [[ -z "$found_lower" ]]; then
+                    collision_name="${new_name:0:5}${counter}"
+                fi
+            else
+                # Double digit: remove 2 chars (prefer lowercase) then append counter
+                # Find last 2 lowercase letters to remove
+                removed=0
+                temp_name="$new_name"
+                
+                # Remove last lowercase
+                for ((i=${#temp_name}-1; i>=0 && removed<2; i--)); do
+                    char="${temp_name:$i:1}"
+                    if [[ "$char" =~ [a-z] ]]; then
+                        temp_name="${temp_name:0:$i}${temp_name:$((i+1))}"
+                        removed=$((removed+1))
+                        break
+                    fi
+                done
+                
+                # Remove second-to-last lowercase
+                if [[ $removed -lt 2 ]]; then
+                    for ((i=${#temp_name}-1; i>=0 && removed<2; i--)); do
+                        char="${temp_name:$i:1}"
+                        if [[ "$char" =~ [a-z] ]]; then
+                            temp_name="${temp_name:0:$i}${temp_name:$((i+1))}"
+                            removed=$((removed+1))
+                            break
+                        fi
+                    done
+                fi
+                
+                # If we removed enough lowercase, append counter
+                if [[ $removed -eq 2 ]]; then
+                    collision_name="${temp_name}${counter}"
+                else
+                    # Not enough lowercase, just truncate and append
+                    collision_name="${new_name:0:4}${counter}"
+                fi
+            fi
+            
+            if [[ -n "$ext" ]]; then
+                new_filename="${collision_name} (${nameonly}).${ext}"
+            else
+                new_filename="${collision_name} (${nameonly})"
             fi
             new_path="${dir}/${new_filename}"
             [[ -n "$VERBOSE" ]] && printf "  Collision, trying: %s\n" "$new_filename" >&2
             counter=$((counter + 1))
+            
+            # Safety: stop at 99 to avoid infinite loop
+            if [[ $counter -gt 99 ]]; then
+                [[ -n "$VERBOSE" ]] && printf "  ERROR: Too many collisions (>99)\n" >&2
+                break
+            fi
         done
         
         mv "$filepath" "$new_path" 2>/dev/null
