@@ -3,7 +3,15 @@
 # Silent file renamer for macOS/Automator
 # Usage: ./rename.sh /path/to/folder
 # Debug mode: VERBOSE=1 ./rename.sh /path/to/folder
-# VERSION: 2025-01-25 with parentheses support
+# Version: ./rename.sh --version
+VERSION="2025-01-25-v3-consonant-priority"
+
+# Show version if requested
+if [[ "$1" == "--version" || "$1" == "-v" ]]; then
+    echo "rename.sh version $VERSION"
+    echo "Features: 6-char abbreviation, consonant priority, original name in parentheses"
+    exit 0
+fi
 
 # Disable all tracing and warnings
 setopt no_xtrace 2>/dev/null
@@ -20,6 +28,66 @@ generate_short_name() {
     # Use awk to do all the processing
     echo "$input" | awk '
     BEGIN { max_chars = 6 }
+    
+    function is_vowel(char) {
+        return (char ~ /[aeiouAEIOU]/)
+    }
+    
+    function abbreviate_word(word, target_len) {
+        if (word == "") return ""
+        
+        # If word is purely numeric, just truncate it
+        if (word ~ /^[0-9]+$/) {
+            return substr(word, 1, target_len)
+        }
+        
+        # Build character array with vowel flags
+        len = length(word)
+        for (i = 1; i <= len; i++) {
+            chars[i] = substr(word, i, 1)
+            is_v[i] = is_vowel(chars[i])
+        }
+        
+        # Mark which positions to include
+        # Always include first character
+        include[1] = 1
+        included_count = 1
+        
+        if (included_count >= target_len) {
+            return toupper(chars[1])
+        }
+        
+        # First pass: mark consonants for inclusion
+        for (i = 2; i <= len && included_count < target_len; i++) {
+            if (!is_v[i]) {
+                include[i] = 1
+                included_count++
+            }
+        }
+        
+        # Second pass: mark vowels for inclusion if we still have room
+        for (i = 2; i <= len && included_count < target_len; i++) {
+            if (is_v[i]) {
+                include[i] = 1
+                included_count++
+            }
+        }
+        
+        # Build result string in original order
+        result = ""
+        for (i = 1; i <= len; i++) {
+            if (include[i]) {
+                if (i == 1) {
+                    result = result toupper(chars[i])
+                } else {
+                    result = result tolower(chars[i])
+                }
+            }
+        }
+        
+        return result
+    }
+    
     {
         name = $0
         
@@ -34,23 +102,20 @@ generate_short_name() {
         }
         
         # Remove non-alphanumeric but keep internal numbers as separate words
-        # First replace non-alphanumeric with spaces
         gsub(/[^a-zA-Z0-9]+/, " ", name)
         gsub(/  +/, " ", name)
         gsub(/^ | $/, "", name)
         
-        # Split into words (now includes number words)
+        # Split into words
         n = split(name, temp_words, " ")
         
-        # Further split words that end with numbers (e.g., "Verse2" -> "Verse" "2")
+        # Further split words that end with numbers
         num_words = 0
         for (i = 1; i <= n; i++) {
             if (temp_words[i] == "") continue
             
             word = temp_words[i]
-            # Check if word ends with number
             if (match(word, /[a-zA-Z]+[0-9]+$/)) {
-                # Split into letter part and number part
                 letter_part = word
                 gsub(/[0-9]+$/, "", letter_part)
                 number_part = word
@@ -80,62 +145,61 @@ generate_short_name() {
         
         result = ""
         
-        if (num_words <= avail) {
-            # Calculate how many letters each word should get
-            for (i = 1; i <= num_words; i++) {
-                word_lens[i] = 1  # Start with 1 letter per word
+        # Build character pool from all words
+        # Format: char_pool[index] = {char, word_idx, char_idx, is_first, is_vowel}
+        pool_size = 0
+        
+        for (w = 1; w <= num_words; w++) {
+            word = words[w]
+            word_len = length(word)
+            
+            for (c = 1; c <= word_len; c++) {
+                pool_size++
+                char = substr(word, c, 1)
+                pool_char[pool_size] = char
+                pool_word_idx[pool_size] = w
+                pool_char_idx[pool_size] = c
+                pool_is_first[pool_size] = (c == 1)
+                pool_is_vowel[pool_size] = is_vowel(char)
+                pool_is_digit[pool_size] = (char ~ /[0-9]/)
             }
-            
-            # Distribute remaining characters, starting from last word
-            remaining = avail - num_words
-            idx = num_words
-            
-            while (remaining > 0) {
-                # Can we add another letter to this word?
-                if (word_lens[idx] < length(words[idx])) {
-                    word_lens[idx]++
-                    remaining--
-                }
-                
-                # Move to previous word
-                idx--
-                if (idx < 1) idx = num_words
-                
-                # Safety: check if all words are exhausted
-                can_add = 0
-                for (i = 1; i <= num_words; i++) {
-                    if (word_lens[i] < length(words[i])) can_add = 1
-                }
-                if (!can_add) break
+        }
+        
+        # Mark characters for inclusion
+        included = 0
+        
+        # Pass 1: Include first char of each word
+        for (i = 1; i <= pool_size && included < avail; i++) {
+            if (pool_is_first[i]) {
+                pool_include[i] = 1
+                included++
             }
-            
-            # Build result with calculated lengths
-            for (i = 1; i <= num_words; i++) {
-                word = words[i]
-                # Check if word is purely numeric
-                if (word ~ /^[0-9]+$/) {
-                    # Number word - just use it as-is (uppercase not needed)
-                    result = result substr(word, 1, word_lens[i])
+        }
+        
+        # Pass 2: Include remaining consonants (not first chars)
+        for (i = 1; i <= pool_size && included < avail; i++) {
+            if (!pool_include[i] && !pool_is_vowel[i] && !pool_is_first[i]) {
+                pool_include[i] = 1
+                included++
+            }
+        }
+        
+        # Pass 3: Include vowels (not first chars)
+        for (i = 1; i <= pool_size && included < avail; i++) {
+            if (!pool_include[i] && pool_is_vowel[i] && !pool_is_first[i]) {
+                pool_include[i] = 1
+                included++
+            }
+        }
+        
+        # Build result from included characters
+        for (i = 1; i <= pool_size; i++) {
+            if (pool_include[i]) {
+                char = pool_char[i]
+                if (pool_is_first[i]) {
+                    result = result toupper(char)
                 } else {
-                    # Letter word - capitalize first, lowercase rest
-                    first_char = toupper(substr(word, 1, 1))
-                    rest = ""
-                    if (word_lens[i] > 1) {
-                        rest = tolower(substr(word, 2, word_lens[i] - 1))
-                    }
-                    result = result first_char rest
-                }
-            }
-        } else {
-            # Take first letters only
-            for (i = 1; i <= avail; i++) {
-                word = words[i]
-                if (word ~ /^[0-9]+$/) {
-                    # Number word - use first digit
-                    result = result substr(word, 1, 1)
-                } else {
-                    # Letter word - capitalize first letter
-                    result = result toupper(substr(word, 1, 1))
+                    result = result tolower(char)
                 }
             }
         }
@@ -187,7 +251,6 @@ for filepath in "${files[@]}"; do
         new_name="${new_name}_"
     done
     
-    # VERSION CHECK: This should add parentheses with original name
     # Build new filename with original name in parentheses
     if [[ -n "$ext" ]]; then
         new_filename="${new_name} (${nameonly}).${ext}"
