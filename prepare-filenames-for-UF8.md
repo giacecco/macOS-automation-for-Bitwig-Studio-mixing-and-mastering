@@ -1,52 +1,93 @@
 # prepare-filenames-for-UF8.sh
 
 ## Overview
-A zsh script for macOS, suitable to be run as a "quick action" in Finder, that intelligently shortens filenames while preserving the original name in parentheses. Designed for audio producers and anyone working with long, descriptive filenames that need to be condensed for better visualizing on the display of Mackie-like devices like the SSL UF8, that offers only 6 characters per track.
+A bash script for macOS, suitable to be run as a "quick action" in Finder, that intelligently shortens filenames while preserving the original name in parentheses. Designed for audio producers and anyone working with long, descriptive filenames that need to be condensed for better visualizing on the display of Mackie-like devices like the SSL UF8, that offers only 6 characters per track.
 
 ## What It Does
-The script recursively processes all files in a folder and renames them using a smart abbreviation algorithm, creating short 6-character names while keeping the full original name for reference.
+The script recursively processes all files in a folder and renames them using a smart abbreviation algorithm, creating short 6-character names while keeping the full original name for reference, still visible in the DAW.
 
 ### Example Transformations
-- `60 Bridge Fred Durst.wav` → `BrFrDu (Bridge Fred Durst).wav`
-- `32 Verse2 Salesman.wav` → `Ve2Sal (Verse2 Salesman).wav`
-- `17 Bass.wav` → `Bass__ (Bass).wav`
-- `71 BD Can't Stop Ctr.wav` → `BCTSCt (BD Can't Stop Ctr).wav`
+- `60 Bridge Fred Durst.wav` → `BrFrDu (60 Bridge Fred Durst).wav`
+- `32 Verse2 Salesman.wav` → `Ve2Sal (32 Verse2 Salesman).wav`
+- `17 Bass.wav` → `Bass__ (17 Bass).wav`
+- `71 BD Can't Stop Ctr.wav` → `BCTSCt (71 BD Can't Stop Ctr).wav`
+- `05 Shotgun.wav` → `Shtgun (05 Shotgun).wav`
+- `34 Guitar Left 3.wav` → `GtrLf3 (34 Guitar Left 3).wav`
 
 ## How It Works
 
 ### 1. Leading Numbers Removal
-Leading numbers (often added by some DAW when exporting but not necessarily useful) are stripped from the filename:
-- `60 Bridge Fred Durst` → `Bridge Fred Durst`
+Leading numbers (often added by some DAW when exporting but not necessarily useful for display) are stripped from the filename during processing but preserved in the parenthetical original name:
+- `60 Bridge Fred Durst` → processes as `Bridge Fred Durst`
+- Final result: `BrFrDu (60 Bridge Fred Durst).wav`
 
 ### 2. Trailing Numbers Preservation
-Numbers at the end of the filename are kept as part of the abbreviation, as they could be particularly useful in representing the intention of the source:
-- `Guitar2` → `Guita2` (keeps the 2)
-- `Explosion1` → `Explo1` (keeps the 1)
+Numbers at the end of the filename are kept as part of the abbreviation, as they are particularly useful in representing variants or takes:
+- `Guitar2` → `Guitr2` (keeps the 2)
+- `Explosion1` → `Expls1` (keeps the 1)
+- Trailing numbers reduce available characters: with trailing "2", only 5 chars remain for the abbreviation
 
 ### 3. Internal Number Handling
 Numbers within words are treated as separate "words":
 - `Verse2 Salesman` → words: `Verse`, `2`, `Salesman`
-- `PC3 YEAH2` → words: `Pc`, `3`, `Ye`, `2`
+- `PC3 YEAH2` → words: `Pc`, `3`, `YEAH`, `2`
 
 ### 4. Word Abbreviation Algorithm
-The script creates a 6-character abbreviation by:
-1. Taking the first letter of each word (capitalized)
-2. Distributing remaining characters to words, prioritizing the **last words**
-3. Adding lowercase letters from the end of words when space permits
+The script creates a 6-character abbreviation using a **round-robin character distribution** strategy:
+
+**Step 1: Calculate Available Characters**
+- Start with 6 characters total
+- Subtract trailing number length (if any)
+- Example: `Guitar2` has trailing "2", so 5 chars available for abbreviation
+
+**Step 2: Distribute Characters Round-Robin**
+1. Give each word 1 character (its first letter, capitalized)
+2. Distribute remaining characters evenly across words, cycling through them
+3. This maximizes the average number of letters preserved from each word
+
+**Step 3: Abbreviate Each Word (Consonant-Priority)**
+For each word, given its allocated character count:
+1. Always include the first letter (capitalized)
+2. Drop vowels first (left to right, starting from position 2) to preserve consonants
+3. Only drop consonants if necessary (from the end)
+4. Maintain original character order in the result
 
 **Examples:**
+
+*Example 1: Multiple Words with Even Distribution*
 - `Bridge Fred Durst` (3 words, 6 chars available):
-  - First letters: `B`, `F`, `D` = 3 chars
-  - 3 chars remaining → distribute to last words
-  - Result: `Br` + `Fr` + `Du` = `BrFrDu`
+  - Each word starts with 1 char: `B`, `F`, `D` = 3 chars used
+  - 3 chars remaining → distribute round-robin: 1 to each word
+  - `Bridge` gets 2 chars → `Br`
+  - `Fred` gets 2 chars → `Fr`
+  - `Durst` gets 2 chars → `Du`
+  - Result: `BrFrDu`
 
-- `Impact` (1 word, 6 chars available):
-  - Takes first 6 letters: `Impact`
+*Example 2: Single Word*
+- `Shotgun` (1 word, 6 chars available):
+  - `Shotgun` gets all 6 chars
+  - Word is 7 chars, need to drop 1
+  - Drop vowel 'o' (first vowel after 'S')
+  - Result: `Shtgun`
 
-- `Chorus Hi` (2 words, 6 chars available):
-  - First letters: `C`, `H` = 2 chars
-  - 4 chars remaining → add to both words
-  - Result: `Chor` + `Hi` = `ChorHi`
+*Example 3: Two Words*
+- `Chorus Lo` (2 words, 6 chars available):
+  - Each word starts with 1 char: `C`, `L` = 2 chars used
+  - 4 chars remaining → distribute round-robin (2 to each)
+  - `Chorus` gets 3 chars → `Chr` (drops vowels 'o', 'u')
+  - `Lo` gets 3 chars → but `Lo` is only 2 chars, so `Lo`
+  - Actually: distribute gives `Chorus` 4 chars, `Lo` 2 chars
+  - `Chorus` with 4 chars → `Chrs` (C-h-r-s, drops vowels o,u)
+  - `Lo` with 2 chars → `Lo` (complete word)
+  - Result: `ChrsLo`
+
+*Example 4: With Trailing Number*
+- `Guitar Left 3` (2 words + trailing "3", 5 chars available):
+  - Each word starts with 1 char: `G`, `L` = 2 chars used
+  - 3 chars remaining → distribute round-robin
+  - `Guitar` gets 3 chars → `Gtr` (G-t-r, drops vowels u,i,a)
+  - `Left` gets 2 chars → `Lf` (L-f, drops vowels e)
+  - Add trailing: `GtrLf3`
 
 ### 5. Padding
 If the generated name is shorter than 6 characters, it's padded with underscores:
@@ -54,13 +95,14 @@ If the generated name is shorter than 6 characters, it's padded with underscores
 - `Ding` → `Ding__`
 
 ### 6. Original Name Preservation
-The full original name (without leading numbers) is added in parentheses:
+The full original name (including leading numbers) is added in parentheses:
 - Final format: `SHORT_ (Original Name).ext`
+- Example: `BrFrDu (60 Bridge Fred Durst).wav`
 
 ### 7. Collision Handling
 If two files would create the same shortened name, a counter is added:
-- `ChGtrL (Chorus Gtr L).wav`
-- `ChGtrL_2 (Chunky Gtr L).wav`
+- `ChGtrL (21 Chorus Gtr L).wav`
+- `ChGtrL_2 (23 Chunky Gtr L).wav`
 
 ## Usage
 
@@ -71,6 +113,9 @@ If two files would create the same shortened name, a counter is added:
 
 # Debug mode (shows what's happening)
 VERBOSE=1 ./rename.sh /path/to/folder
+
+# Check version
+./rename.sh --version
 ```
 
 ### macOS Automator
@@ -78,7 +123,7 @@ VERBOSE=1 ./rename.sh /path/to/folder
 2. Create a new "Quick Action"
 3. Set "Workflow receives current" to **folders** in **Finder**
 4. Add "Run Shell Script" action
-5. Set Shell to `/bin/zsh`
+5. Set Shell to `/bin/bash`
 6. Set "Pass input" to **as arguments**
 7. Paste the entire script
 8. Save with a name like "Rename Files Short"
@@ -93,16 +138,53 @@ Now you can right-click any folder in Finder → Quick Actions → "Rename Files
 - ✅ Handles filename collisions automatically
 - ✅ Maintains original name for reference
 - ✅ Smart abbreviation that maximizes word representation
+- ✅ Consonant-priority within each word for better readability
 - ✅ Special handling for numbers in filenames
+- ✅ Round-robin character distribution across words
+- ✅ Cross-platform (bash-compatible for macOS and Linux)
 
 ## Requirements
-- macOS (uses zsh)
-- `awk` (pre-installed on macOS)
-- `find` (pre-installed on macOS)
+- bash (pre-installed on macOS and most Linux systems)
+- `awk` (pre-installed on macOS and most Linux systems)
+- `find` (pre-installed on macOS and most Linux systems)
+- `dirname` and `basename` utilities (standard on Unix-like systems)
+
+## Algorithm Details
+
+### Why Round-Robin Distribution?
+The round-robin approach ensures that when abbreviating multi-word filenames, characters are distributed evenly across all words rather than favoring earlier words. This maximizes the average number of letters preserved from each word, making abbreviations more recognizable.
+
+### Why Consonant-Priority?
+Within each word, consonants are preserved over vowels because:
+- Consonants carry more identifying information
+- Words remain more readable without vowels (e.g., "Gtr" vs "uia")
+- This is similar to how text message abbreviations work naturally
+
+### Character Dropping Strategy
+When a word needs to be shortened:
+1. First letter is always kept (capitalized for visibility)
+2. Vowels are dropped from left to right (after the first letter)
+3. Only if more characters must be dropped are consonants removed from the end
+
+Example: `Shotgun` (7 chars) → 6 chars needed
+- Keep: S (position 1, always kept)
+- Drop: o (position 3, first vowel after S)
+- Keep: h, t, g, u, n
+- Result: `Shtgun`
 
 ## Notes
 - The script renames files in place
 - Original filenames are preserved in parentheses for reference
 - Files are only renamed if the new name differs from the current name
-- The 6-character limit ensures compatibility with systems that have filename length restrictions
-- Padding with underscores ensures consistent filename lengths for better sorting
+- The 6-character limit ensures compatibility with systems like the SSL UF8 that have display limitations
+- Padding with underscores ensures consistent filename lengths for better sorting and display alignment
+
+## Version
+Current version: `2025-01-25-v5-drop-vowels-left`
+
+Features in this version:
+- 6-character abbreviation
+- Consonant priority within words
+- Round-robin character distribution across words
+- Original name preservation in parentheses
+- Bash compatibility for cross-platform use
