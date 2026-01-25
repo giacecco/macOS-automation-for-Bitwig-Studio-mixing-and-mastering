@@ -4,7 +4,7 @@
 # Usage: ./rename.sh /path/to/folder
 # Debug mode: VERBOSE=1 ./rename.sh /path/to/folder
 # Version: ./rename.sh --version
-VERSION="2025-01-25-v9-both-files-get-counters"
+VERSION="2025-01-25-v10-support-999-collisions"
 
 # Show version if requested
 if [[ "$1" == "--version" || "$1" == "-v" ]]; then
@@ -358,24 +358,21 @@ for filepath in "${files[@]}"; do
                     collision_name="${new_name:0:5}${counter}"
                 fi
             else
-                # Double digit: remove 2 chars (prefer lowercase) then append counter
-                # Find last 2 lowercase letters to remove
+                # Double or triple digit
+                if [[ $counter -lt 100 ]]; then
+                    # Double digit (10-99): remove 2 lowercase letters
+                    num_to_remove=2
+                else
+                    # Triple digit (100-999): remove 3 lowercase letters
+                    num_to_remove=3
+                fi
+                
                 removed=0
                 temp_name="$new_name"
                 
-                # Remove last lowercase
-                for ((i=${#temp_name}-1; i>=0 && removed<2; i--)); do
-                    char="${temp_name:$i:1}"
-                    if [[ "$char" =~ [a-z] ]]; then
-                        temp_name="${temp_name:0:$i}${temp_name:$((i+1))}"
-                        removed=$((removed+1))
-                        break
-                    fi
-                done
-                
-                # Remove second-to-last lowercase
-                if [[ $removed -lt 2 ]]; then
-                    for ((i=${#temp_name}-1; i>=0 && removed<2; i--)); do
+                # Remove the required number of lowercase letters
+                for ((pass=1; pass<=num_to_remove; pass++)); do
+                    for ((i=${#temp_name}-1; i>=0 && removed<num_to_remove; i--)); do
                         char="${temp_name:$i:1}"
                         if [[ "$char" =~ [a-z] ]]; then
                             temp_name="${temp_name:0:$i}${temp_name:$((i+1))}"
@@ -383,14 +380,14 @@ for filepath in "${files[@]}"; do
                             break
                         fi
                     done
-                fi
+                done
                 
                 # If we removed enough lowercase, append counter
-                if [[ $removed -eq 2 ]]; then
+                if [[ $removed -eq $num_to_remove ]]; then
                     collision_name="${temp_name}${counter}"
                 else
                     # Not enough lowercase, just truncate and append
-                    collision_name="${new_name:0:4}${counter}"
+                    collision_name="${new_name:0:$((6-${#counter}))}${counter}"
                 fi
             fi
             
@@ -403,9 +400,9 @@ for filepath in "${files[@]}"; do
             [[ -n "$VERBOSE" ]] && printf "  Collision, trying: %s\n" "$new_filename" >&2
             counter=$((counter + 1))
             
-            # Safety: stop at 99 to avoid infinite loop
-            if [[ $counter -gt 99 ]]; then
-                [[ -n "$VERBOSE" ]] && printf "  ERROR: Too many collisions (>99)\n" >&2
+            # Safety: stop at 999 to avoid infinite loop
+            if [[ $counter -gt 999 ]]; then
+                [[ -n "$VERBOSE" ]] && printf "  ERROR: Too many collisions (>999)\n" >&2
                 break
             fi
         done
